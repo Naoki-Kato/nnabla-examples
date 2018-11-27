@@ -78,6 +78,8 @@ def get_args(monitor_path='tmp.monitor.imagenet', max_iter=500000, model_save_pa
                         help="Sync weights every specified iteration. NCCL uses\
  the ring all reduce, so gradients in each device are not exactly same. When it\
  is accumulated in the weights, the weight values in each device diverge.")
+    parser.add_argument("--add-seblock", "-A", action='store_true',
+                        help='Add SEblock to each Resblock.')
 
     args = parser.parse_args()
     if not os.path.isdir(args.model_save_path):

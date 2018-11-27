@@ -21,6 +21,13 @@ import nnabla.parametric_functions as PF
 import nnabla.functions as F
 from nnabla.logger import logger
 
+def seblock(x, reduction_ratio=16):
+    reduction_size = x.shape[1] // reduction_ratio
+    h = F.mean(x, axis=(2, 3)) # global average pooling
+    h = F.relu(PF.affine(h, reduction_size, name='affine1'))
+    h = F.sigmoid(PF.affine(h, x.shape[1], name='affine2'))
+    h = F.broadcast(h.reshape(h.shape + (1, 1)), x.shape)
+    return x * h
 
 def shortcut(x, ochannels, stride, shortcut_type, test):
     ichannels = x.shape[1]
@@ -49,7 +56,7 @@ def shortcut(x, ochannels, stride, shortcut_type, test):
     return x
 
 
-def basicblock(x, ochannels, stride, shortcut_type, test):
+def basicblock(x, ochannels, stride, shortcut_type, test, add_seblock=False):
     def bn(h):
         return PF.batch_normalization(h, batch_stat=not test)
     ichannels = x.shape[1]
@@ -59,12 +66,15 @@ def basicblock(x, ochannels, stride, shortcut_type, test):
                    inplace=True)
     with nn.parameter_scope("basicblock2"):
         h = bn(PF.convolution(h, ochannels, (3, 3), pad=(1, 1), with_bias=False))
+    if add_seblock:
+        with nn.parameter_scope("se"):
+            h = seblock(h)
     with nn.parameter_scope("basicblock_s"):
         s = shortcut(x, ochannels, stride, shortcut_type, test)
     return F.relu(F.add2(h, s, inplace=True), inplace=True)
 
 
-def bottleneck(x, ochannels, stride, shortcut_type, test):
+def bottleneck(x, ochannels, stride, shortcut_type, test, add_seblock=False):
     def bn(h):
         return PF.batch_normalization(h, batch_stat=not test)
     assert ochannels % 4 == 0
@@ -79,20 +89,23 @@ def bottleneck(x, ochannels, stride, shortcut_type, test):
                               stride=stride, with_bias=False)), inplace=True)
     with nn.parameter_scope("bottleneck3"):
         h = bn(PF.convolution(h, ochannels, (1, 1), with_bias=False))
+    if add_seblock:
+        with nn.parameter_scope("se"):
+            h = seblock(h)
     with nn.parameter_scope("bottleneck_s"):
         s = shortcut(x, ochannels, stride, shortcut_type, test)
     return F.relu(F.add2(h, s, inplace=True), inplace=True)
 
 
-def layer(x, block, ochannels, count, stride, shortcut_type, test):
+def layer(x, block, ochannels, count, stride, shortcut_type, test, add_seblock=False):
     for i in range(count):
         with nn.parameter_scope("layer{}".format(i + 1)):
             x = block(x, ochannels, stride if i ==
-                      0 else (1, 1), shortcut_type, test)
+                      0 else (1, 1), shortcut_type, test, add_seblock=add_seblock)
     return x
 
 
-def resnet_imagenet(x, num_classes, num_layers, shortcut_type, test, tiny=False):
+def resnet_imagenet(x, num_classes, num_layers, shortcut_type, test, tiny=False, add_seblock=False):
     """
     Args:
         x : Variable
@@ -130,7 +143,7 @@ def resnet_imagenet(x, num_classes, num_layers, shortcut_type, test, tiny=False)
     for i in range(4):
         with nn.parameter_scope("res{}".format(i + 1)):
             r = layer(r, block, ochannels[i] * ocoef,
-                      counts[i], (strides[i], strides[i]), shortcut_type, test)
+                      counts[i], (strides[i], strides[i]), shortcut_type, test, add_seblock=add_seblock)
         hidden['r{}'.format(i + 1)] = r
         logger.debug(r.shape)
     r = F.average_pooling(r, r.shape[-2:])
