@@ -112,9 +112,9 @@ def train():
         # 320x320 image inputs, the input image size of ResNet is set as
         # 224x224. We need to get tar file and create cache file(320x320 images).
         # Please check README.
-        # data = data_iterator_imagenet(
-        #     args.batch_size, args.train_cachefile_dir)
-        # vdata = data_iterator_imagenet(args.batch_size, args.val_cachefile_dir)
+        data = data_iterator_imagenet(
+            args.batch_size, args.train_cachefile_dir)
+        vdata = data_iterator_imagenet(args.batch_size, args.val_cachefile_dir)
         num_classes = 1000
     t_model = get_model(
         args, num_classes, test=False, tiny=args.tiny_mode)
